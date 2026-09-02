@@ -1820,13 +1820,16 @@ def home():
 # ============================================================
 if __name__ == "__main__":
 
-    port = int(os.getenv("PORT", 5000))
-
     print("\n========================================")
     print("Starting TNZ AI Sales Agent")
     print("========================================")
 
+    print("Page Access Token loaded:", bool(PAGE_ACCESS_TOKEN))
+    print("Gemini API loaded:", bool(GEMINI_API_KEY))
+    print("Google Sheets URL loaded:", bool(GOOGLE_SHEETS_URL))
+    print("Google Sheets Secret loaded:", bool(GOOGLE_SHEETS_SECRET))
+
     app.run(
         host="0.0.0.0",
-        port=port
+        port=5000
     )
