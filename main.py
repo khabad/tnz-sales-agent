@@ -77,8 +77,11 @@ missing_variables = [
 
 
 if missing_variables:
+
     print("\nWARNING: Missing environment variables:")
+
     for variable in missing_variables:
+
         print(" -", variable)
 
 
@@ -92,14 +95,6 @@ app = Flask(__name__)
 # ============================================================
 # MEMORY
 # ============================================================
-#
-# NOTE:
-# This is fine for local testing.
-#
-# Later, when deploying to Cloud Run with multiple instances,
-# we should move this state to Firestore/Redis/database.
-# ============================================================
-
 
 customer_chats = {}
 
@@ -242,6 +237,7 @@ Product information:
 def get_customer_chat(sender_id):
 
     if sender_id not in customer_chats:
+
         customer_chats[sender_id] = [
             {
                 "role": "system",
@@ -269,8 +265,6 @@ def get_customer_order(sender_id):
 
             "region": None,
 
-            # IMPORTANT:
-            # quantity means PAID quantity
             "quantity": None,
 
             "order_started": False,
@@ -279,10 +273,8 @@ def get_customer_order(sender_id):
 
             "order_saved": False,
 
-            # Used when collecting order details
             "awaiting_field": None,
 
-            # Used when AI asks whether customer wants to order
             "order_offer_active": False
         }
 
@@ -301,7 +293,11 @@ def normalize_text(text):
 
     text = text.strip().lower()
 
-    text = re.sub(r"\s+", " ", text)
+    text = re.sub(
+        r"\s+",
+        " ",
+        text
+    )
 
     return text
 
@@ -410,27 +406,32 @@ def extract_phone(text):
     if not text:
         return None
 
-    # Keep only digits
-    digits = re.sub(r"\D", "", text)
+    digits = re.sub(
+        r"\D",
+        "",
+        text
+    )
 
-    # Tanzania international format:
-    # +255712345678
     if digits.startswith("255") and len(digits) == 12:
 
         local_number = "0" + digits[3:]
 
-        if re.fullmatch(r"0\d{9}", local_number):
+        if re.fullmatch(
+            r"0\d{9}",
+            local_number
+        ):
+
             return local_number
 
-    # Tanzania local format:
-    # 0712345678
     if len(digits) == 10:
 
-        if re.fullmatch(r"0\d{9}", digits):
+        if re.fullmatch(
+            r"0\d{9}",
+            digits
+        ):
+
             return digits
 
-    # Sometimes users may omit the leading 0:
-    # 712345678
     if len(digits) == 9:
 
         if digits[0] in "67":
@@ -465,17 +466,7 @@ def extract_quantity(text):
     if not text:
         return None
 
-    original = text.strip()
     normalized = normalize_text(text)
-
-    # --------------------------------------------------------
-    # Explicit quantity:
-    #
-    # 1 pair
-    # 2 pairs
-    # 1 pc
-    # 2 pieces
-    # --------------------------------------------------------
 
     match = re.search(
         r"\b(1|2)\s*(?:pair|pairs|pc|pcs|piece|pieces|earbud|earbuds)\b",
@@ -484,21 +475,9 @@ def extract_quantity(text):
 
     if match:
 
-        quantity = int(match.group(1))
-
-        return quantity
-
-    # --------------------------------------------------------
-    # Phrases such as:
-    #
-    # just 1
-    # only 1
-    # want 2
-    # need 2
-    # take 2
-    # buy 1
-    # order 2
-    # --------------------------------------------------------
+        return int(
+            match.group(1)
+        )
 
     match = re.search(
         r"\b(?:just|only|want|need|take|buy|order)\s+(1|2)\b",
@@ -507,11 +486,9 @@ def extract_quantity(text):
 
     if match:
 
-        return int(match.group(1))
-
-    # --------------------------------------------------------
-    # Number words
-    # --------------------------------------------------------
+        return int(
+            match.group(1)
+        )
 
     for word, number in NUMBER_WORDS.items():
 
@@ -522,23 +499,14 @@ def extract_quantity(text):
 
             return number
 
-    # --------------------------------------------------------
-    # Very short direct answers:
-    #
-    # "1"
-    # "2"
-    #
-    # We ONLY accept this when the entire message is 1 or 2.
-    # This prevents prices like 89000 from becoming quantities.
-    # --------------------------------------------------------
+    if re.fullmatch(
+        r"[12]",
+        normalized
+    ):
 
-    if re.fullmatch(r"[12]", normalized):
-
-        return int(normalized)
-
-    # --------------------------------------------------------
-    # "1 please" / "2 please"
-    # --------------------------------------------------------
+        return int(
+            normalized
+        )
 
     match = re.fullmatch(
         r"(1|2)\s*(?:please|tafadhali)?",
@@ -547,19 +515,11 @@ def extract_quantity(text):
 
     if match:
 
-        return int(match.group(1))
+        return int(
+            match.group(1)
+        )
 
     return None
-
-
-# ============================================================
-# DETECT WHETHER A LINE IS A QUANTITY LINE
-# ============================================================
-
-
-def is_quantity_line(text):
-
-    return extract_quantity(text) is not None
 
 
 # ============================================================
@@ -573,7 +533,6 @@ def wants_to_order(text):
 
     phrases = [
 
-        # English
         "i want to order",
         "i want to buy",
         "i want it",
@@ -593,7 +552,6 @@ def wants_to_order(text):
         "order one",
         "order two",
 
-        # Swahili
         "nataka kuagiza",
         "nataka kununua",
         "nataka hii",
@@ -605,16 +563,14 @@ def wants_to_order(text):
         "agiza mbili"
     ]
 
-    for phrase in phrases:
-
-        if phrase in text:
-            return True
-
-    return False
+    return any(
+        phrase in text
+        for phrase in phrases
+    )
 
 
 # ============================================================
-# DETECT DIRECT ORDER DATA
+# DIRECT ORDER DATA
 # ============================================================
 
 
@@ -622,15 +578,10 @@ def has_order_data(text):
 
     phone = extract_phone(text)
 
-    quantity = extract_quantity(text)
-
-    # Phone alone is strong order intent
     if phone:
+
         return True
 
-    # Quantity alone:
-    # only consider it as order intent if the message clearly
-    # indicates buying/requesting.
     normalized = normalize_text(text)
 
     quantity_phrases = [
@@ -663,34 +614,14 @@ def has_order_data(text):
         "mbili"
     ]
 
-    for phrase in quantity_phrases:
-
-        if phrase in normalized:
-            return True
-
-    # Do NOT treat a standalone "1" or "2" as order intent
-    # unless we are already in order mode.
-
-    return False
+    return any(
+        phrase in normalized
+        for phrase in quantity_phrases
+    )
 
 
 # ============================================================
 # MULTI-LINE ORDER PARSER
-# ============================================================
-#
-# Example:
-#
-# Just 1
-# Khalil
-# 0556567890
-# Dar es Salaam
-#
-# Result:
-#
-# quantity = 1
-# name = Khalil
-# phone = 0556567890
-# region = Dar es Salaam
 # ============================================================
 
 
@@ -703,43 +634,34 @@ def try_extract_multiline_details(order, text):
     ]
 
     if len(lines) < 2:
+
         return
 
     remaining_lines = []
 
     for line in lines:
 
-        # Phone
         phone = extract_phone(line)
 
         if phone:
 
             if not order["phone"]:
+
                 order["phone"] = phone
 
             continue
 
-        # Quantity
         quantity = extract_quantity(line)
 
         if quantity is not None:
 
             if not order["quantity"]:
+
                 order["quantity"] = quantity
 
             continue
 
         remaining_lines.append(line)
-
-    # --------------------------------------------------------
-    # Name + Region
-    #
-    # If we have 2 remaining lines:
-    #
-    # first = name
-    # last = region
-    #
-    # --------------------------------------------------------
 
     if len(remaining_lines) >= 2:
 
@@ -752,9 +674,6 @@ def try_extract_multiline_details(order, text):
             order["region"] = remaining_lines[-1]
 
     elif len(remaining_lines) == 1:
-
-        # If one line remains, decide based on which field
-        # is still missing.
 
         if not order["customer_name"]:
 
@@ -772,19 +691,11 @@ def try_extract_multiline_details(order, text):
 
 def update_order_from_message(order, text):
 
-    # --------------------------------------------------------
-    # Phone
-    # --------------------------------------------------------
-
     phone = extract_phone(text)
 
     if phone:
 
         order["phone"] = phone
-
-    # --------------------------------------------------------
-    # Quantity
-    # --------------------------------------------------------
 
     quantity = extract_quantity(text)
 
@@ -803,7 +714,7 @@ def calculate_order(quantity):
     if quantity not in (1, 2):
 
         raise ValueError(
-            "Only 1 or 2 paid pairs are currently supported."
+            "Only 1 or 2 paid pairs are supported."
         )
 
     offer = PRODUCT_INFORMATION["offer"]
@@ -838,9 +749,13 @@ def calculate_order(quantity):
 def is_order_complete(order):
 
     return all([
+
         order["customer_name"],
+
         order["phone"],
+
         order["region"],
+
         order["quantity"] in (1, 2)
     ])
 
@@ -852,7 +767,9 @@ def is_order_complete(order):
 
 def create_order_summary(order):
 
-    offer = calculate_order(order["quantity"])
+    offer = calculate_order(
+        order["quantity"]
+    )
 
     if offer["paid_quantity"] == 1:
 
@@ -867,6 +784,7 @@ def create_order_summary(order):
         )
 
     return (
+
         "📦 Order Summary\n\n"
 
         f"Name: {order['customer_name']}\n"
@@ -887,17 +805,21 @@ def create_order_summary(order):
 
 
 # ============================================================
-# FINAL CONFIRMATION MESSAGE
+# FINAL CONFIRMATION
 # ============================================================
 
 
 def create_final_confirmation(order, order_id):
 
-    offer = calculate_order(order["quantity"])
+    offer = calculate_order(
+        order["quantity"]
+    )
 
     if offer["paid_quantity"] == 1:
 
-        offer_text = "1 paid pair → 1 pair received"
+        offer_text = (
+            "1 paid pair → 1 pair received"
+        )
 
     else:
 
@@ -906,6 +828,7 @@ def create_final_confirmation(order, order_id):
         )
 
     return (
+
         "✅ Order confirmed!\n\n"
 
         f"Order ID: {order_id}\n"
@@ -927,7 +850,9 @@ def create_final_confirmation(order, order_id):
 
 def save_order_to_google_sheets(order):
 
-    offer = calculate_order(order["quantity"])
+    offer = calculate_order(
+        order["quantity"]
+    )
 
     payload = {
 
@@ -941,17 +866,14 @@ def save_order_to_google_sheets(order):
 
         "product": PRODUCT_INFORMATION["name"],
 
-        # Quantity in Google Sheets = TOTAL quantity received
-        #
-        # 1 paid  -> 1 total
-        # 2 paid  -> 3 total (1 FREE)
-        #
         "quantity": offer["total_quantity"],
 
         "cod_amount": offer["cod"]
     }
 
     print("\n========== GOOGLE SHEETS ==========")
+
+    print("Sending order to Google Sheets...")
 
     try:
 
@@ -961,22 +883,34 @@ def save_order_to_google_sheets(order):
             timeout=20
         )
 
-        print("Status:", response.status_code)
-        print("Response:", response.text)
+        print(
+            "Status:",
+            response.status_code
+        )
+
+        print(
+            "Response:",
+            response.text
+        )
 
         if response.status_code != 200:
+
             return None
 
         data = response.json()
 
         if data.get("success"):
+
             return data.get("order_id")
 
         return None
 
     except Exception as error:
 
-        print("Google Sheets error:", error)
+        print(
+            "Google Sheets error:",
+            repr(error)
+        )
 
         return None
 
@@ -988,25 +922,48 @@ def save_order_to_google_sheets(order):
 
 def ask_ai(sender_id, user_text):
 
-    chat = get_customer_chat(sender_id)
+    print("\n========== AI START ==========")
+
+    print(
+        "Customer ID:",
+        sender_id
+    )
+
+    print(
+        "Customer message:",
+        user_text
+    )
+
+    if not OPENROUTER_API_KEY:
+
+        print(
+            "ERROR: OPENROUTER_API_KEY is missing."
+        )
+
+        return (
+            "Sorry, I'm having trouble responding right now. "
+            "Please try again later."
+        )
+
+    chat = get_customer_chat(
+        sender_id
+    )
 
     chat.append({
+
         "role": "user",
+
         "content": user_text
     })
-
-    # --------------------------------------------------------
-    # Keep conversation history from becoming too large.
-    #
-    # System message + last 20 messages.
-    # --------------------------------------------------------
 
     system_message = chat[0]
 
     recent_messages = chat[-20:]
 
     messages = [
+
         system_message
+
     ] + recent_messages
 
     headers = {
@@ -1037,6 +994,11 @@ def ask_ai(sender_id, user_text):
 
     print("\n========== OPENROUTER REQUEST ==========")
 
+    print(
+        "Model:",
+        MODEL_NAME
+    )
+
     try:
 
         response = requests.post(
@@ -1046,17 +1008,19 @@ def ask_ai(sender_id, user_text):
             timeout=60
         )
 
+        print("\n========== OPENROUTER RESPONSE ==========")
+
         print(
             "OpenRouter Status:",
             response.status_code
         )
 
-        if response.status_code != 200:
+        print(
+            "OpenRouter Response:",
+            response.text
+        )
 
-            print(
-                "OpenRouter Error:",
-                response.text
-            )
+        if response.status_code != 200:
 
             return (
                 "Sorry, I'm having trouble responding right now. "
@@ -1065,19 +1029,36 @@ def ask_ai(sender_id, user_text):
 
         data = response.json()
 
-        choices = data.get("choices", [])
+        choices = data.get(
+            "choices",
+            []
+        )
 
         if not choices:
+
+            print(
+                "ERROR: OpenRouter returned no choices."
+            )
 
             return (
                 "Sorry, I couldn't generate a response right now."
             )
 
-        message = choices[0].get("message", {})
+        message = choices[0].get(
+            "message",
+            {}
+        )
 
-        answer = message.get("content", "")
+        answer = message.get(
+            "content",
+            ""
+        )
 
         if not answer:
+
+            print(
+                "ERROR: OpenRouter returned empty content."
+            )
 
             return (
                 "Sorry, I couldn't generate a response right now."
@@ -1086,18 +1067,26 @@ def ask_ai(sender_id, user_text):
         answer = answer.strip()
 
         chat.append({
+
             "role": "assistant",
+
             "content": answer
         })
 
-        print("\n========== OPENROUTER RESPONSE ==========")
+        print("\n========== AI FINAL RESPONSE ==========")
+
         print(answer)
 
         return answer
 
     except Exception as error:
 
-        print("OpenRouter exception:", error)
+        print("\n========== OPENROUTER EXCEPTION ==========")
+
+        print(
+            "OpenRouter exception:",
+            repr(error)
+        )
 
         return (
             "Sorry, I'm having trouble responding right now. "
@@ -1112,26 +1101,51 @@ def ask_ai(sender_id, user_text):
 
 def send_message(recipient_id, message_text):
 
+    if not PAGE_ACCESS_TOKEN:
+
+        print(
+            "\nERROR: PAGE_ACCESS_TOKEN is missing."
+        )
+
+        return False
+
     url = (
         "https://graph.facebook.com/v23.0/me/messages"
     )
 
     params = {
+
         "access_token": PAGE_ACCESS_TOKEN
     }
 
     payload = {
 
         "recipient": {
+
             "id": recipient_id
         },
 
         "messaging_type": "RESPONSE",
 
         "message": {
+
             "text": message_text
         }
     }
+
+    print(
+        "\n========== FACEBOOK SEND REQUEST =========="
+    )
+
+    print(
+        "Recipient ID:",
+        recipient_id
+    )
+
+    print(
+        "Message:",
+        message_text
+    )
 
     try:
 
@@ -1142,7 +1156,9 @@ def send_message(recipient_id, message_text):
             timeout=20
         )
 
-        print("\n========== FACEBOOK SEND ==========")
+        print(
+            "\n========== FACEBOOK SEND RESPONSE =========="
+        )
 
         print(
             "Facebook Status:",
@@ -1156,15 +1172,27 @@ def send_message(recipient_id, message_text):
 
         if response.status_code != 200:
 
+            print(
+                "ERROR: Facebook failed to send message."
+            )
+
             return False
+
+        print(
+            "Facebook message sent successfully."
+        )
 
         return True
 
     except Exception as error:
 
         print(
+            "\n========== FACEBOOK SEND EXCEPTION =========="
+        )
+
+        print(
             "Facebook send exception:",
-            error
+            repr(error)
         )
 
         return False
@@ -1177,10 +1205,6 @@ def send_message(recipient_id, message_text):
 
 def send_next_order_prompt(sender_id, order):
 
-    # --------------------------------------------------------
-    # CUSTOMER NAME
-    # --------------------------------------------------------
-
     if not order["customer_name"]:
 
         order["awaiting_field"] = "name"
@@ -1191,10 +1215,6 @@ def send_next_order_prompt(sender_id, order):
         )
 
         return
-
-    # --------------------------------------------------------
-    # PHONE
-    # --------------------------------------------------------
 
     if not order["phone"]:
 
@@ -1207,10 +1227,6 @@ def send_next_order_prompt(sender_id, order):
 
         return
 
-    # --------------------------------------------------------
-    # REGION
-    # --------------------------------------------------------
-
     if not order["region"]:
 
         order["awaiting_field"] = "region"
@@ -1221,10 +1237,6 @@ def send_next_order_prompt(sender_id, order):
         )
 
         return
-
-    # --------------------------------------------------------
-    # QUANTITY
-    # --------------------------------------------------------
 
     if order["quantity"] not in (1, 2):
 
@@ -1241,15 +1253,13 @@ def send_next_order_prompt(sender_id, order):
 
         return
 
-    # --------------------------------------------------------
-    # COMPLETE
-    # --------------------------------------------------------
-
     order["awaiting_field"] = "confirmation"
 
     order["waiting_for_confirmation"] = True
 
-    summary = create_order_summary(order)
+    summary = create_order_summary(
+        order
+    )
 
     send_message(
         sender_id,
@@ -1258,25 +1268,24 @@ def send_next_order_prompt(sender_id, order):
 
 
 # ============================================================
-# HANDLE SINGLE-LINE ORDER FIELD
+# HANDLE SINGLE FIELD
 # ============================================================
 
 
 def handle_awaiting_field(order, text):
 
-    field = order.get("awaiting_field")
-
-    # --------------------------------------------------------
-    # NAME
-    # --------------------------------------------------------
+    field = order.get(
+        "awaiting_field"
+    )
 
     if field == "name":
 
-        # Do not treat phone/quantity as a name
         if extract_phone(text):
+
             return False
 
         if extract_quantity(text) is not None:
+
             return False
 
         cleaned = text.strip()
@@ -1290,10 +1299,6 @@ def handle_awaiting_field(order, text):
             return True
 
         return False
-
-    # --------------------------------------------------------
-    # PHONE
-    # --------------------------------------------------------
 
     if field == "phone":
 
@@ -1309,16 +1314,14 @@ def handle_awaiting_field(order, text):
 
         return False
 
-    # --------------------------------------------------------
-    # REGION
-    # --------------------------------------------------------
-
     if field == "region":
 
         if extract_phone(text):
+
             return False
 
         if extract_quantity(text) is not None:
+
             return False
 
         cleaned = text.strip()
@@ -1332,10 +1335,6 @@ def handle_awaiting_field(order, text):
             return True
 
         return False
-
-    # --------------------------------------------------------
-    # QUANTITY
-    # --------------------------------------------------------
 
     if field == "quantity":
 
@@ -1359,22 +1358,47 @@ def handle_awaiting_field(order, text):
 # ============================================================
 
 
-@app.route("/webhook", methods=["GET"])
+@app.route(
+    "/webhook",
+    methods=["GET"]
+)
 def verify_webhook():
 
-    mode = request.args.get("hub.mode")
+    mode = request.args.get(
+        "hub.mode"
+    )
 
-    token = request.args.get("hub.verify_token")
+    token = request.args.get(
+        "hub.verify_token"
+    )
 
-    challenge = request.args.get("hub.challenge")
+    challenge = request.args.get(
+        "hub.challenge"
+    )
 
-    if mode == "subscribe" and token == VERIFY_TOKEN:
+    print("\n========== WEBHOOK VERIFICATION ==========")
 
-        print("Webhook verified successfully.")
+    print("Mode:", mode)
+
+    print(
+        "Token received:",
+        bool(token)
+    )
+
+    if (
+        mode == "subscribe"
+        and token == VERIFY_TOKEN
+    ):
+
+        print(
+            "Webhook verified successfully."
+        )
 
         return challenge, 200
 
-    print("Webhook verification failed.")
+    print(
+        "Webhook verification failed."
+    )
 
     return "Verification failed", 403
 
@@ -1384,69 +1408,198 @@ def verify_webhook():
 # ============================================================
 
 
-@app.route("/webhook", methods=["POST"])
+@app.route(
+    "/webhook",
+    methods=["POST"]
+)
 def webhook():
 
     data = request.get_json(
         silent=True
     )
 
-    print("\n\n========== NEW EVENT ==========")
+    print("\n\n========================================")
+    print("========== NEW FACEBOOK EVENT ==========")
+    print("========================================")
+
+    print("Full event data:")
 
     print(data)
 
     if not data:
 
-        return "EVENT_RECEIVED", 200
+        print(
+            "WARNING: Empty event received."
+        )
 
-    # --------------------------------------------------------
-    # Make sure this is a Facebook Page event
-    # --------------------------------------------------------
+        return "EVENT_RECEIVED", 200
 
     if data.get("object") != "page":
 
+        print(
+            "Ignoring event because object is not page."
+        )
+
         return "EVENT_RECEIVED", 200
 
-    entries = data.get("entry", [])
+    entries = data.get(
+        "entry",
+        []
+    )
 
-    for entry in entries:
+    print(
+        "Number of entries:",
+        len(entries)
+    )
+
+    for entry_index, entry in enumerate(entries):
+
+        print(
+            f"\n========== ENTRY {entry_index + 1} =========="
+        )
+
+        print(
+            "Page ID:",
+            entry.get("id")
+        )
 
         messaging_events = entry.get(
             "messaging",
             []
         )
 
-        for event in messaging_events:
+        print(
+            "Messaging events:",
+            len(messaging_events)
+        )
 
-            sender = event.get("sender", {})
+        for event_index, event in enumerate(
+            messaging_events
+        ):
 
-            sender_id = sender.get("id")
+            print(
+                f"\n========== EVENT {event_index + 1} =========="
+            )
+
+            print(
+                "Raw event:"
+            )
+
+            print(event)
+
+            sender = event.get(
+                "sender",
+                {}
+            )
+
+            sender_id = sender.get(
+                "id"
+            )
+
+            print(
+                "Sender ID:",
+                sender_id
+            )
 
             if not sender_id:
 
+                print(
+                    "WARNING: No sender ID."
+                )
+
                 continue
 
             # ------------------------------------------------
-            # Message ID
+            # READ EVENT
             # ------------------------------------------------
 
-            message = event.get("message", {})
+            if "read" in event:
 
-            message_id = message.get("mid")
+                print(
+                    "EVENT TYPE: READ"
+                )
+
+                print(
+                    "Read event ignored."
+                )
+
+                continue
+
+            # ------------------------------------------------
+            # DELIVERY EVENT
+            # ------------------------------------------------
+
+            if "delivery" in event:
+
+                print(
+                    "EVENT TYPE: DELIVERY"
+                )
+
+                print(
+                    "Delivery event ignored."
+                )
+
+                continue
+
+            # ------------------------------------------------
+            # MESSAGE EVENT
+            # ------------------------------------------------
+
+            if "message" not in event:
+
+                print(
+                    "EVENT TYPE: UNKNOWN"
+                )
+
+                continue
+
+            message = event.get(
+                "message",
+                {}
+            )
+
+            print(
+                "EVENT TYPE: MESSAGE"
+            )
+
+            print(
+                "Message object:",
+                message
+            )
+
+            # ------------------------------------------------
+            # IGNORE ECHO
+            # ------------------------------------------------
+
+            if message.get("is_echo"):
+
+                print(
+                    "Echo message ignored."
+                )
+
+                continue
+
+            message_id = message.get(
+                "mid"
+            )
+
+            print(
+                "Message ID:",
+                message_id
+            )
 
             if not message_id:
 
-                continue
+                print(
+                    "WARNING: No message ID."
+                )
 
-            # ------------------------------------------------
-            # Duplicate protection
-            # ------------------------------------------------
+                continue
 
             if message_id in processed_message_ids:
 
                 print(
-                    "Duplicate message ignored:",
-                    message_id
+                    "Duplicate message ignored."
                 )
 
                 continue
@@ -1455,53 +1608,55 @@ def webhook():
                 message_id
             )
 
-            # ------------------------------------------------
-            # Ignore echo messages
-            # ------------------------------------------------
-
-            if message.get("is_echo"):
-
-                continue
-
-            # ------------------------------------------------
-            # Only text messages for now
-            # ------------------------------------------------
-
-            text = message.get("text")
+            text = message.get(
+                "text"
+            )
 
             if not text:
+
+                print(
+                    "Message has no text."
+                )
 
                 continue
 
             text = text.strip()
 
+            if not text:
+
+                print(
+                    "Message text is empty."
+                )
+
+                continue
+
             print(
-                "\nCustomer:",
+                "\n========== CUSTOMER MESSAGE =========="
+            )
+
+            print(
+                "Customer ID:",
                 sender_id
             )
 
             print(
-                "Message:",
+                "Text:",
                 text
             )
 
-            # ------------------------------------------------
+            # =================================================
             # ORDER STATE
-            # ------------------------------------------------
+            # =================================================
 
             order = get_customer_order(
                 sender_id
             )
 
             # =================================================
-            # 1. WAITING FOR FINAL CONFIRMATION
+            # WAITING FOR CONFIRMATION
             # =================================================
 
             if order["waiting_for_confirmation"]:
-
-                # ---------------------------------------------
-                # YES
-                # ---------------------------------------------
 
                 if is_confirmation(text):
 
@@ -1509,8 +1664,10 @@ def webhook():
                         "Customer confirmed order."
                     )
 
-                    order_id = save_order_to_google_sheets(
-                        order
+                    order_id = (
+                        save_order_to_google_sheets(
+                            order
+                        )
                     )
 
                     if order_id:
@@ -1544,16 +1701,11 @@ def webhook():
                             (
                                 "Sorry, there was a problem "
                                 "saving your order. "
-                                "Please try confirming again "
-                                "in a moment."
+                                "Please try confirming again."
                             )
                         )
 
                     continue
-
-                # ---------------------------------------------
-                # NO
-                # ---------------------------------------------
 
                 if is_negative(text):
 
@@ -1575,10 +1727,6 @@ def webhook():
 
                     continue
 
-                # ---------------------------------------------
-                # Customer may correct a field directly
-                # ---------------------------------------------
-
                 order[
                     "waiting_for_confirmation"
                 ] = False
@@ -1598,21 +1746,24 @@ def webhook():
                 continue
 
             # =================================================
-            # 2. ORDER ALREADY SAVED
+            # ORDER ALREADY SAVED
             # =================================================
 
             if order["order_saved"]:
 
-                # If customer starts another order,
-                # reset the order state.
-
-                if wants_to_order(text) or has_order_data(text):
+                if (
+                    wants_to_order(text)
+                    or has_order_data(text)
+                ):
 
                     customer_orders[sender_id] = {
 
                         "customer_name": None,
+
                         "phone": None,
+
                         "region": None,
+
                         "quantity": None,
 
                         "order_started": True,
@@ -1626,11 +1777,16 @@ def webhook():
                         "order_offer_active": False
                     }
 
-                    order = customer_orders[sender_id]
+                    order = customer_orders[
+                        sender_id
+                    ]
 
                 else:
 
-                    # Normal AI conversation after order
+                    print(
+                        "Normal AI conversation."
+                    )
+
                     ai_reply = ask_ai(
                         sender_id,
                         text
@@ -1644,43 +1800,66 @@ def webhook():
                     continue
 
             # =================================================
-            # 3. DETECT ORDER INTENT
+            # DETECT ORDER INTENT
             # =================================================
 
             if not order["order_started"]:
 
                 if wants_to_order(text):
 
-                    order["order_started"] = True
+                    print(
+                        "Order intent detected."
+                    )
+
+                    order[
+                        "order_started"
+                    ] = True
 
                 elif has_order_data(text):
 
-                    order["order_started"] = True
+                    print(
+                        "Order data detected."
+                    )
+
+                    order[
+                        "order_started"
+                    ] = True
 
                 elif (
-                    order["order_offer_active"]
+                    order[
+                        "order_offer_active"
+                    ]
                     and is_affirmative(text)
                 ):
 
-                    order["order_started"] = True
+                    print(
+                        "Customer accepted order offer."
+                    )
+
+                    order[
+                        "order_started"
+                    ] = True
 
                     order[
                         "order_offer_active"
                     ] = False
 
             # =================================================
-            # 4. IF ORDER STARTED
+            # ORDER FLOW
             # =================================================
 
             if order["order_started"]:
 
-                # ---------------------------------------------
-                # Multi-line order details
-                # ---------------------------------------------
+                print(
+                    "\n========== ORDER FLOW =========="
+                )
 
                 lines = [
+
                     line.strip()
+
                     for line in text.splitlines()
+
                     if line.strip()
                 ]
 
@@ -1693,14 +1872,11 @@ def webhook():
 
                 else:
 
-                    # -----------------------------------------
-                    # If waiting for a specific field,
-                    # use that field.
-                    # -----------------------------------------
-
-                    handled = handle_awaiting_field(
-                        order,
-                        text
+                    handled = (
+                        handle_awaiting_field(
+                            order,
+                            text
+                        )
                     )
 
                     if not handled:
@@ -1710,11 +1886,19 @@ def webhook():
                             text
                         )
 
-                # ---------------------------------------------
-                # If order is complete
-                # ---------------------------------------------
+                print(
+                    "Current order state:"
+                )
+
+                print(
+                    order
+                )
 
                 if is_order_complete(order):
+
+                    print(
+                        "Order is complete."
+                    )
 
                     order[
                         "awaiting_field"
@@ -1724,8 +1908,10 @@ def webhook():
                         "waiting_for_confirmation"
                     ] = True
 
-                    summary = create_order_summary(
-                        order
+                    summary = (
+                        create_order_summary(
+                            order
+                        )
                     )
 
                     send_message(
@@ -1735,10 +1921,6 @@ def webhook():
 
                     continue
 
-                # ---------------------------------------------
-                # Ask for next missing field
-                # ---------------------------------------------
-
                 send_next_order_prompt(
                     sender_id,
                     order
@@ -1747,48 +1929,72 @@ def webhook():
                 continue
 
             # =================================================
-            # 5. NORMAL AI CONVERSATION
+            # NORMAL AI CONVERSATION
             # =================================================
+
+            print(
+                "\n========== NORMAL AI CONVERSATION =========="
+            )
+
+            print(
+                "Calling OpenRouter AI..."
+            )
 
             ai_reply = ask_ai(
                 sender_id,
                 text
             )
 
-            send_message(
+            print(
+                "\nAI Reply:"
+            )
+
+            print(
+                ai_reply
+            )
+
+            print(
+                "\nSending response to Facebook..."
+            )
+
+            result = send_message(
                 sender_id,
                 ai_reply
             )
 
-            # ------------------------------------------------
-            # Detect whether AI is asking customer to order.
-            #
-            # This allows:
-            #
-            # AI: Would you like to order?
-            # Customer: Yes
-            #
-            # to enter order mode.
-            # ------------------------------------------------
+            print(
+                "Facebook send result:",
+                result
+            )
+
+            # =================================================
+            # DETECT ORDER OFFER
+            # =================================================
 
             lower_reply = normalize_text(
                 ai_reply
             )
 
             order_words = [
+
                 "order",
                 "buy",
                 "purchase",
+
                 "kuagiza",
                 "kununua",
                 "agiza",
                 "nunua"
             ]
 
-            asks_question = "?" in ai_reply
+            asks_question = (
+                "?" in ai_reply
+            )
 
             contains_order_word = any(
+
                 word in lower_reply
+
                 for word in order_words
             )
 
@@ -1801,6 +2007,14 @@ def webhook():
                     "order_offer_active"
                 ] = True
 
+                print(
+                    "Order offer activated."
+                )
+
+    print(
+        "\n========== WEBHOOK COMPLETED =========="
+    )
+
     return "EVENT_RECEIVED", 200
 
 
@@ -1809,27 +2023,62 @@ def webhook():
 # ============================================================
 
 
-@app.route("/", methods=["GET"])
+@app.route(
+    "/",
+    methods=["GET"]
+)
 def home():
 
-    return "TNZ AI Sales Agent is running.", 200
+    return (
+        "TNZ AI Sales Agent is running.",
+        200
+    )
 
 
 # ============================================================
 # START SERVER
 # ============================================================
+
+
 if __name__ == "__main__":
+
+    port = int(
+        os.getenv(
+            "PORT",
+            5000
+        )
+    )
 
     print("\n========================================")
     print("Starting TNZ AI Sales Agent")
     print("========================================")
 
-    print("Page Access Token loaded:", bool(PAGE_ACCESS_TOKEN))
-    print("Gemini API loaded:", bool(GEMINI_API_KEY))
-    print("Google Sheets URL loaded:", bool(GOOGLE_SHEETS_URL))
-    print("Google Sheets Secret loaded:", bool(GOOGLE_SHEETS_SECRET))
+    print(
+        "Page Access Token loaded:",
+        bool(PAGE_ACCESS_TOKEN)
+    )
+
+    print(
+        "OpenRouter API loaded:",
+        bool(OPENROUTER_API_KEY)
+    )
+
+    print(
+        "Google Sheets URL loaded:",
+        bool(GOOGLE_SHEETS_URL)
+    )
+
+    print(
+        "Google Sheets Secret loaded:",
+        bool(GOOGLE_SHEETS_SECRET)
+    )
+
+    print(
+        "Server port:",
+        port
+    )
 
     app.run(
         host="0.0.0.0",
-        port=5000
+        port=port
     )
